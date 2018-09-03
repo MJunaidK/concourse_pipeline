@@ -34,7 +34,11 @@ PCF(junaidcts@gmail.com,Sep-2018)
 	 cf login -a https://api.local.pcfdev.io --skip-ssl-validation
 	 Email: user
 	 Password: pass
-	 
+	
+	Use 'cf target' to view or set your target org and space.
+	
+	>cf target
+	
 	 Use Gradle to assemble the app locally:
 	 
 	 >.\gradlew.bat assemble
@@ -46,6 +50,7 @@ PCF(junaidcts@gmail.com,Sep-2018)
 	Hit the below url now in browser
 	
 	http://spring-music-accountable-ardvark.local.pcfdev.io/
+	
 
 4) View the Logs
 
