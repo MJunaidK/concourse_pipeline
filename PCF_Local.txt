@@ -1,0 +1,100 @@
+PCF(junaidcts@gmail.com,Sep-2018)
+
+
+1) Install the CF CLI
+
+	https://cli.run.pivotal.io/stable?releas=windows64&amp;source=github
+	
+	Test using:
+	> cf help
+
+2) Install PCF Dev
+	
+	https://network.pivotal.io/products/pcfdev#/releases/88478
+	
+	Install the PCF Dev plugin
+	
+	>.\pcfdev-VERSION-windows.exe
+	
+	Start PCF Dev:
+	
+	> cf dev start
+	
+	
+3) Deploy the Sample App
+
+	> git clone https://github.com/cloudfoundry-samples/spring-music	
+	
+	Navigate to the app directory:
+	
+	> cd .\spring-music
+	
+	Log in to PCF Dev:
+	
+	 cf login -a https://api.local.pcfdev.io --skip-ssl-validation
+	 Email: user
+	 Password: pass
+	 
+	 Use Gradle to assemble the app locally:
+	 
+	 >.\gradlew.bat assemble
+	 
+	Push the app:
+
+	cf push --hostname spring-music
+	
+	Hit the below url now in browser
+	
+	http://spring-music-accountable-ardvark.local.pcfdev.io/
+
+4) View the Logs
+
+	View a snapshot of recent logs:
+	
+	>cf logs spring-music --recent
+	
+	stream live logs:
+	
+	>cf logs spring-music
+
+
+5) Connect a Database
+
+
+Let's configure this app to use a MySQL database	 
+	
+   List what plans are available:
+   
+   > cf marketplace -s p-mysql
+   
+   Create a service instance with the 512mb plan:
+   
+   > cf create-service p-mysql 512mb my-spring-db
+   
+   Bind the newly created service to the app:
+   
+   > cf bind-service spring-music my-spring-db
+   
+   Restart the app:
+   
+   > cf restart spring-music
+   
+   Verify the new service is bound to the app:
+   
+   > cf services
+   
+   
+	 
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	API endpoint: https://api.local.pcfdev.io
