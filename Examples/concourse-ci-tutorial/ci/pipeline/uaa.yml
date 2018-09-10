@@ -1,0 +1,216 @@
+resource_types:
+- name: artifactory
+  type: docker-image
+  source:
+    repository: pivotalservices/artifactory-resource
+- name: email
+  type: docker-image
+  source: 
+   repository: pcfseceng/email-resource
+    
+
+resources:
+- name: uaa_sources
+  type: git
+  source:
+    uri: https://github.com/cloudfoundry/uaa.git
+    tag_filter: '3.6.*'
+- name: uaa-build
+  type: artifactory
+  source:
+    endpoint: http://192.168.99.100:8081/artifactory
+    repository: "/war-files/uaa"
+    regex: "cloudfoundry-identity-uaa-(?<version>.*).war"
+    username: admin
+    password: password
+    skip_ssl_verification: true
+- name: test_deployment
+  type: cf
+  source:
+    api: https://apps.local.pcfdev.io
+    username: admin
+    password: admin
+    organization: pcfdev-org
+    space: test
+    skip_cert_check: true
+- name: notification
+  type: email
+  source:
+    smtp:
+      host: smtp.gmail.com
+      port: "587"
+      username: owolf@specify.io
+      password: secret
+    from: ci@specify.io
+    to: [ "devteam@specify.io" ]
+- name: production_deployment
+  type: cf
+  source: 
+    api: https://apps.local.pcfdev.io
+    username: admin
+    password: admin
+    organization: pcfdev-org
+    space: pcfdev-space
+    skip_cert_check: true
+    
+jobs:
+- name: build
+  plan:
+  - get: uaa_sources
+    trigger: true
+  - task: build
+    config:
+      platform: linux
+      inputs:
+      - name: uaa_sources
+      outputs:
+      - name: uaa_war
+      image_resource:
+        type: docker-image
+        source: { repository: mohammadjunaid/uaa }
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          export TERM=dumb
+          cd uaa_sources
+          ./gradlew :cloudfoundry-identity-uaa:war
+          mv uaa/build/libs/cloudfoundry-identity-uaa-*.war ../uaa_war
+    on_success:
+      do:
+      - task: create-notification-content
+        config:
+          platform: linux
+          inputs:
+          - name: uaa_sources
+          outputs:
+          - name: notification-content
+          image_resource:
+            type: docker-image
+            source: { repository: pallet/git-client }
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              LAST_COMMIT_HASH=$(cd uaa_sources && git log -1 | grep commit | cut -d' ' -f2)
+              LAST_COMMIT_DETAILS=$(cd uaa_sources && git log -1 --name-status)
+              echo "UAA Build Successful ${LAST_COMMIT_HASH}" >> notification-content/notification_subject.txt
+              echo "UAA Build Successful\n\n ${LAST_COMMIT_DETAILS}" >> notification-content/notification_body.txt
+      - put: notification
+        params:
+          subject: notification-content/notification_subject.txt
+          body: notification-content/notification_body.txt
+    on_failure:
+      do:
+      - task: create-notification-content
+        config:
+          platform: linux
+          inputs:
+          - name: uaa_sources
+          outputs:
+          - name: notification-content
+          image_resource:
+            type: docker-image
+            source: { repository: pallet/git-client }
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              LAST_COMMIT_HASH=$(cd uaa_sources && git log -1 | grep commit | cut -d' ' -f2)
+              LAST_COMMIT_DETAILS=$(cd uaa_sources && git log -1 --name-status)
+              echo "UAA Build FAILED ${LAST_COMMIT_HASH}" >> notification-content/notification_subject.txt
+              echo "UAA Build FAILED\n\n ${LAST_COMMIT_DETAILS}" >> notification-content/notification_body.txt
+      - put: notification
+        params:
+          subject: notification-content/notification_subject.txt
+          body: notification-content/notification_body.txt
+                
+            
+  - put: uaa-build
+    params:
+      file: uaa_war/cloudfoundry-identity-uaa-*.war
+
+- name: deploy-to-test
+  plan:
+  - get: uaa-build
+    passed: ['build']
+    trigger: true
+  - task: add-manifest-to-uaa-build
+    config:
+      platform: linux
+      inputs:
+      - name: uaa-build
+      outputs:
+      - name: uaa-build-with-manifest
+      image_resource:
+        type: docker-image
+        source: { repository: mohammadjunaid/uaa }
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          cp uaa-build/* uaa-build-with-manifest
+          export WAR_PATH='cd uaa-build-with-manifest && ls cloudfoundry-identity-uaa-*.war'
+          cat  uaa-build-with-manifest/manifest.yml
+          applications:
+          - name: uaa
+            memory: 512M
+            path: ${WAR_PATH}
+            host: test-uaa
+            services:
+            - uaadb
+            env:
+              JBP_CONFIG_SPRING_AUTO_RECONFIGURATION: '[enabled: true]'
+              JBP_CONFIG_TOMCAT: '{tomcat: { version: 7.0.+ }}'
+              SPRING_PROFILES_ACTIVE: mysql,default
+              UAA_URL: https://apps.local.pcfdev.io
+              LOGIN_URL: https://apps.local.pcfdev.io
+          
+  - put: test_deployment
+    params:
+      manifest: uaa-build-with-manifest/manifest.yml
+      
+- name: deploy-to-production
+  plan:
+  - get: uaa-build
+    passed: ['deploy-to-test']
+    trigger: true
+  - task: add-manifest-to-uaa-build
+    config:
+      platform: linux
+      inputs:
+      - name: uaa-build
+      outputs:
+      - name: uaa-build-with-manifest
+      image_resource:
+        type: docker-image
+        source: { repository: mohammadjunaid/uaa }
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          cp uaa-build/* uaa-build-with-manifest
+          export WAR_PATH='cd uaa-build-with-manifest && ls cloudfoundry-identity-uaa-*.war'
+          cat  uaa-build-with-manifest/manifest.yml
+          applications:
+          - name: uaa
+            memory: 512M
+            path: ${WAR_PATH}
+            host: test-uaa
+            services:
+            - uaadb
+            env:
+              JBP_CONFIG_SPRING_AUTO_RECONFIGURATION: '[enabled: true]'
+              JBP_CONFIG_TOMCAT: '{tomcat: { version: 7.0.+ }}'
+              SPRING_PROFILES_ACTIVE: mysql,default
+              UAA_URL: https://apps.local.pcfdev.io
+              LOGIN_URL: https://apps.local.pcfdev.io
+          
+  - put: production_deployment
+    params:
+      manifest: uaa-build-with-manifest/manifest.yml
