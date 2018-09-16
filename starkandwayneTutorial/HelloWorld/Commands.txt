@@ -1,0 +1,5 @@
+fly -t tutorial execute -c task_hello_world.yml
+
+fly -t tutorial execute -c task_ubuntu_uname.yml
+
+uname -a  --> Reveals all information about te opeating system https://linoxide.com/linux-command/uname-command/

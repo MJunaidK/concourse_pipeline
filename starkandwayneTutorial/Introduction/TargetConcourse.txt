@@ -1,0 +1,6 @@
+1)Target Concourse
+
+In the spirit of declaring absolutely everything you do to get absolutely the same result every time, the fly CLI requires that you specify the target API for every fly request
+
+fly --target tutorial login --concourse-url http://192.168.100.4:8080
+
