@@ -1,0 +1,213 @@
+Concourse
+
+1)vagrant box add concourse/lite --box-version 3.2.1
+2)vagrant init concourse/lite
+3)vagrant up
+
+====================
+
+fly
+
+1) In order to communicate with the concourse.ci server via CLI it's required to let the CLI know where the concourse server runs:
+
+	fly --target local login --concourse-url http://192.168.100.4:8080
+
+2) upload the the pipeline specification to the concourse server.
+
+	fly -t local set-pipeline --pipeline hello-world --config Examples/ci/hello-world.yml
+
+3) To unpause the pipeline and start a build via the web interface you can also use the fyl CLI:
+
+	fly -t local unpause-pipeline --pipeline hello-world
+	fly -t local trigger-job --job hello-world/hello_world_job --watch
+
+4) To upload the pipeline definition to the concourse.ci server  	
+
+	fly -t local set-pipeline --pipeline hello-world --config Examples/ci/simple_deploy.yml
+
+5) Using the concourse.ci Cloud Foundry resource to push the application to a Cloud Foundry instance.
+	
+	fly -t local set-pipeline --pipeline simple_deploy_cf --config Examples/ci/simple_deploy_cf.yml
+
+	pipeline can be accessed using :  http://192.168.100.4:8080/teams/main/pipelines/simple_deploy_cf
+	
+	
+	This pipeline deploy tp cloud foundry with the following logs:
+	
+	Setting api endpoint to https://api.local.pcfdev.io...
+OK
+
+api endpoint:   https://api.local.pcfdev.io
+api version:    2.82.0
+Not logged in. Use 'cf login' to log in.
+API endpoint: https://api.local.pcfdev.io
+Authenticating...
+OK
+Use 'cf target' to view or set your target org and space.
+api endpoint:   https://api.local.pcfdev.io
+api version:    2.82.0
+user:           user
+org:            pcfdev-org
+space:          pcfdev-space
+Using manifest file /tmp/build/put/app_sources/manifest.yml
+
+Creating app concourse-ci-demo in org pcfdev-org / space pcfdev-space as user...
+OK
+
+Creating route concourse-ci-demo-areostyle-dilly.local.pcfdev.io...
+OK
+
+Binding concourse-ci-demo-areostyle-dilly.local.pcfdev.io to concourse-ci-demo...
+OK
+
+Uploading concourse-ci-demo...
+Uploading app files from: /root
+Uploading 2.6M, 5 files
+Done uploading               
+OK
+
+Starting app concourse-ci-demo in org pcfdev-org / space pcfdev-space as user...
+Creating container
+Successfully created container
+Downloading app package...
+Downloaded app package (2.6M)
+Staging...
+-------> Buildpack version 4.3.60
+Installing HTTPD
+HTTPD 2.4.34
+Downloaded [https://buildpacks.cloudfoundry.org/dependencies/httpd/httpd-2.4.34-linux-x64-cflinuxfs2-a84dc5b4.tgz] to [/tmp]
+Installing PHP
+PHP 7.2.8
+Downloaded [https://buildpacks.cloudfoundry.org/dependencies/php/php7-7.2.8-linux-x64-cflinuxfs2-570d0ad4.tgz] to [/tmp]
+**WARNING** A newer version of php is available in this buildpack. Please adjust your app to use version 7.2.9 instead of version 7.2.8 as soon as possible. Old versions of php are only provided to assist in migrating to newer versions.
+Finished: [2018-09-03 02:44:25.201766]
+Exit status 0
+Staging complete
+Uploading droplet, build artifacts cache...
+Uploading build artifacts cache...
+Uploading droplet...
+Uploaded build artifacts cache (199B)
+Uploaded droplet (72.1M)
+Uploading complete
+Destroying container
+Successfully destroyed container
+
+1 of 1 instances running
+
+App started
+
+
+OK
+
+App concourse-ci-demo was started using this command `$HOME/.bp/bin/start`
+
+Showing health and status for app concourse-ci-demo in org pcfdev-org / space pcfdev-space as user...
+OK
+
+requested state: started
+instances: 1/1
+usage: 50M x 1 instances
+urls: concourse-ci-demo-areostyle-dilly.local.pcfdev.io
+last uploaded: Mon Sep 3 02:43:36 UTC 2018
+stack: cflinuxfs2
+buildpack: https://github.com/cloudfoundry/php-buildpack
+
+     state     since                    cpu    memory         disk             details
+#0   running   2018-09-03 02:44:53 AM   0.0%   35.6M of 50M   219.5M of 512M
+
+===================================
+
+Pipe the first service to production (Java App)  
+
+1) Setup Git Repo for the pipeline and create files
+
+	Created uaa.yml file in :
+
+	C:\Junaid\Junaid Learning\ConcourseVagrant\Examples\concourse-ci-tutorial\ci\pipeline
+	
+	This is already a git repo
+
+2)Create a Dockerfile in the following direcory
+
+	C:\Junaid\Junaid Learning\ConcourseVagrant\Examples\concourse-ci-tutorial\ci\dockerfiles\uaa
+	
+ with the following content
+ 
+ FROM java:8-jdk
+ 
+3) Build an image out of the Dockerfile by running the following command: 
+
+docker build -t mohammadjunaid/uaa C:/Junaid/Junaid Learning/ConcourseVagrant/Examples/concourse-ci-tutorial/ci/dockerfiles/uaa/Dockerfile .
+
+docker build -t mohammadjunaid/uaa ./ci/dockerfiles/uaa
+
+ docker build -t mohammadjunaid/uaa C:/Junaid
+ 
+4) Upload the pipeline code with
+
+ fly -t local set-pipeline --pipeline uaa --config ci/pipeline/uaa.yml
+ 
+ check if the pipeline is inpaused
+ 
+  fly -t local  pipelines
+  
+ 5) Setup local Artifactory server
+ 
+ a) Start Docker engine
+ 
+ docker-machine restart
+ 
+ b) There is a Docker image for Artifactory.
+ 
+ docker pull docker.bintray.io/jfrog/artifactory-oss
+ 
+ docker run -p 8081:8081 docker.bintray.io/jfrog/artifactory-oss
+ 
+ c) Finding out the Docker engine IP address run:
+ 
+	docker-machine ip default
+	
+	If the docker machine IP is 192.168.99.100 you can check whether Artifactory is running by opening http://192.168.99.100:8081 in your browser.
+	
+	The default Artifactory admin credentials are
+	user: admin
+	password: password
+
+6) Step 5: Create RDBMS instances
+
+    a) To check which spaces are available run
+	
+		cf spaces
+
+	b) To manage our two environment test and production we use two 
+	
+		 cf create-space test
+	
+	c) Most Cloud Foundry providers have either a MySQL or PostgreSQL service in their 			marketplace. To see the service offering run:
+	
+		cf marketplace
+		
+	d) Change the Cloud Foundry space and create a sql instance run
+
+		cf target -s test
+		cf create-service p-mysql 512mb uaadb
+		
+		cf target -s pcfdev-space
+		cf create-service p-mysql 512mb uaadb
+		
+7) Specify a concourse job to deploy the UAA to the test environment
+
+		Update the yaml and then exceute the following
+		
+		fly -t local set-pipeline --pipeline uaa --config ci/pipeline/uaa.yml
+		
+8)  Send an email once a new version of the UAA is deployed to the test environment
+
+		Update the yaml and then exceute the following
+		
+		fly -t local set-pipeline --pipeline uaa --config ci/pipeline/uaa.yml
+
+9)  Specify a concourse job to deploy the UAA to the production environment
+
+		
+		

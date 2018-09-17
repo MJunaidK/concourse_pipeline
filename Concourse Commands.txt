@@ -1,0 +1,253 @@
+1) Target Concourse
+
+	fly --target tutorial login --concourse-url http://127.0.0.1:8080
+
+2) Destroy Concourse
+	
+	docker-compose down
+
+3) Execute
+
+	Tasks as standalone YAML files (which can be run via fly execute).
+
+	fly -t tutorial execute -c task_hello_world.yml
+
+4) Task Inputs
+	
+	 We will want to pass in the local folder (.). Use -i name=path option to configure each of the required inputs:
+	 
+	 fly -t tutorial e -c inputs_required.yml -i some-important-input=.
+	 
+	 The fly execute command will upload the . directory as an input to the container. It will be made available at the path some-important-input:
+	 
+	 To pass in a different directory as an input, provide its absolute or relative path
+	 
+	 fly -t tutorial e -c inputs_required.yml -i some-important-input=../task-hello-world
+	 
+5)	 Task scripts
+
+	inputs:
+		- name: task-scripts
+		
+	Since input task-scripts matches the current directory task-scripts we did not need to specify fly execute -i task-scripts=.
+	
+6) Basic Pipeline
+
+	1% of tasks that Concourse runs are via fly execute. 99% of tasks that Concourse runs are within "pipelines".
+
+	fly -t tutorial set-pipeline -c pipeline.yml -p hello-world
+	
+	 Jobs, each of which consist of a name and a plan. Each of our plans, in turn, contain "get" and "task" elements. The task items specify how to execute an action while the get items indicate the resource dependencies of the task.
+
+7) pipeline Resources
+
+	Concourse offers no services for storing/retrieving your data. No git repositories. No blobstores. No build numbers. Every input and output must be provided externally. Concourse calls them "Resources". Example resources are git, s3, and semver respectively.
+	
+	To pull in the Git repository, we add a top-level section resources:
+	
+	resources:
+	- name: resource-tutorial
+	type: git
+	source:
+		uri: https://github.com/starkandwayne/concourse-tutorial.git
+		branch: develop
+		
+	Next, add a get: resource-tutorial step, and update the task: hello-world step to replace the config: section with file: resource-tutorial/tutorials/basic/task-hello-world/task_hello_world.yml.
+	
+	
+	jobs:
+	- name: job-hello-world
+	  public: true
+	  plan:
+	  - get: resource-tutorial
+      - task: hello-world
+        file: resource-tutorial/tutorials/basic/task-hello-world/task_hello_world.yml
+		
+	So, hello-world can access anything from resource-tutorial (this tutorial's git repository) under the resource-tutorial/ path. Since the relative path of task_hello_world.yml task file inside this repo is tutorials/basic/task-hello-world/task_hello_world.yml, the task: hello-world references it by joining the two: file: resource-tutorial/tutorials/basic/task-hello-world/task_hello_world.yml
+	
+8) Watch Job Output in Terminal
+
+	You can also view this output from the terminal with fly watch
+	
+	fly -t tutorial watch -j hello-world/job-hello-world
+	
+	The --build NUM option allows you to see the output of a specific build number, rather than the latest build output.
+	
+	You can see the results of recent builds across all pipelines with fly builds:
+
+	fly -t tutorial builds
+	
+9) Trigger Jobs
+
+	There are four ways for a job to be triggered:
+	
+	i) fly trigger-job -j pipeline/jobname 
+	
+	We can re-trigger our hello-world pipeline's job-hello-world:
+
+	   fly -t tutorial trigger-job -j hello-world/job-hello-world
+	   
+	ii) Clicking the + button on the web UI of a job
+	
+	iii) Sending POST HTTP request to Concourse API
+	
+	iv) Triggering Jobs with Resources
+	
+	    The primary way that Concourse jobs will be triggered to run will be by resources changing. A git repo has a new commit? 
+		By default, including get: my-resource in a build plan does not trigger its job.To mark a fetched resource as a trigger add trigger: true
+		
+		jobs:
+		- name: job-demo
+		  plan:
+		  - get: resource-tutorial
+			trigger: true
+			
+		If you want a job to trigger every few minutes then there is the time resource.
+		
+		resources:
+		- name: my-timer
+		  type: time
+		  source:
+			interval: 2m
+			
+		This adds a new resource named my-timer which triggers job-hello-world approximately every 2 minutes.
+
+10)	Destroying Pipelines
+
+		fly -t tutorial destroy-pipeline -p hello-world
+		
+11) Using Resource Inputs in Job Tasks
+		
+	image_resource:
+		type: docker-image
+		source: {repository: golang, tag: 1.9-alpine}
+
+	inputs:
+	- name: resource-tutorial
+	- name: resource-app
+	  path: gopath/src/github.com/cloudfoundry-community/simple-go-web-app	
+	  
+	By default we have seen that inputs store their contents in a folder of the same name. 
+	The resource-app resource will place the inbound files for the input into an alternate path. 
+	
+12) Passing Task Outputs to Task Inputs
+
+    A task's inputs can also come from the outputs of previous tasks. All a task needs to do is declare that it publishes outputs, and subsequent steps can consume those as inputs by the same name
+	
+	
+	A task file declares it will publish outputs with the outputs section:
+
+
+	outputs:
+	- name: some-files		
+	
+	If a task included the above outputs section then its run: command would be responsible for putting interesting files in the some-files directory.
+	
+	Subsequent tasks (discussed in this section) or resources (discussed in the next section) could reference these interesting files within the some-files/ directory.
+	
+13) Parameterized Pipelines
+
+	Concourse pipelines can include ((parameter)) parameters for any value in the pipeline YAML file.
+	
+	There are two parameter in the below job
+	
+	---
+	jobs:
+	- name: show-animal-names
+      plan:
+      - task: show-animal-names
+        config:
+         platform: linux
+         image_resource:
+           type: docker-image
+           source: {repository: busybox}
+        run:
+          path: env
+          args: []
+        params:
+         CAT_NAME: ((cat-name))
+         DOG_NAME: ((dog-name))
+		 
+	   If we fly set-pipeline but do not provide the parameters, we see an error when the job is triggered to run
+	
+	Parameters from fly options
+
+	
+	   fly -t tutorial sp -p parameters -c pipeline.yml -v cat-name=garfield -v dog-name=odie
+	   
+	   The output will show that the -v variables were passed into the params section of the show-animal-names task.
+	   
+	Parameters from local file
+
+	Alternatively, you can store your parameter values in a local file.
+	
+		fly -t tutorial sp -p parameters -c pipeline.yml -l credentials.yml
+		
+	Use the --load-vars-from flag (aliased -l) to pass in this file instead of the -v flag.
+		
+
+		fly -t tutorial sp -p parameters -c pipeline.yml -l credentials.yml
+		
+		
+14) Actual Pipeline - Passing Resources Between Jobs
+
+	job-show-date which will run whenever the first job successfully completes:
+	
+	The latest resource-gist commit fetched down in job-show-date will be the exact commit used in the last successful job-bump-date job.
+	
+	resources:
+	- name: resource-tutorial
+	  type: git
+	  source:
+		uri: https://github.com/starkandwayne/concourse-tutorial.git
+		branch: develop
+	- name: resource-gist
+	  type: git
+	  source:
+		branch: master
+		uri:         ((publishing-outputs-gist-uri))
+		private_key: ((publishing-outputs-private-key))
+	
+	  jobs:
+	  - name: job-bump-date
+	    serial: true
+	    plan:
+		- get: resource-tutorial
+		- get: resource-gist
+		- task: bump-timestamp-file
+		  config:
+			platform: linux
+			image_resource:
+			  type: docker-image
+			  source: { repository: starkandwayne/concourse }
+			inputs:
+			 - name: resource-tutorial
+			 - name: resource-gist
+			outputs:
+			 - name: updated-gist
+			run:
+			   path: resource-tutorial/tutorials/basic/publishing-outputs/bump-timestamp-file.sh
+			- put: resource-gist
+			  params: {repository: updated-gist}
+
+	- name: job-show-date
+	  plan:
+	  - get: resource-tutorial
+      - get: resource-gist
+		passed: [job-bump-date]
+		trigger: true
+		- task: show-date
+		  config:
+			platform: linux
+			image_resource:
+			  type: docker-image
+			  source: {repository: busybox}
+		    inputs:
+			 - name: resource-gist
+			run:
+			 path: cat
+			 args: [resource-gist/bumpme]
+	
+	cd ../pipeline-jobs
+	fly -t tutorial sp -p publishing-outputs -c pipeline.yml -l ../publishing-outputs/credentials.yml
+	fly -t tutorial trigger-job -w -j publishing-outputs/job-bump-date
